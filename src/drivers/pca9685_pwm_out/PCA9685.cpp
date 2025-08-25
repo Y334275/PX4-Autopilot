@@ -61,27 +61,20 @@ int PCA9685::init()
 
 	if (ret != PX4_OK) { return ret; }
 
-	uint8_t buf[2] = {};
+	uint8_t buf[2] = {PCA9685_REG_MODE1, PCA9685_DEFAULT_MODE1_CFG};
 
-	buf[0] = PCA9685_REG_MODE1;
-	buf[1] = PCA9685_DEFAULT_MODE1_CFG | PCA9685_MODE1_SLEEP_MASK;  // put into sleep mode
+	// enable EXTCLK if possible
+#ifdef CONFIG_PCA9685_USE_EXTERNAL_CRYSTAL
+	PX4_INFO("use external clock");
+	buf[1] = PCA9685_DEFAULT_MODE1_CFG | PCA9685_MODE1_SLEEP_MASK | PCA9685_MODE1_EXTCLK_MASK; // put into sleep mode
+#endif
+
 	ret = transfer(buf, 2, nullptr, 0);
 
 	if (OK != ret) {
 		PX4_ERR("init: i2c::transfer returned %d", ret);
 		return ret;
 	}
-
-#ifdef CONFIG_PCA9685_USE_EXTERNAL_CRYSTAL
-	buf[1] = PCA9685_DEFAULT_MODE1_CFG | PCA9685_MODE1_SLEEP_MASK | PCA9685_MODE1_EXTCLK_MASK;
-	ret = transfer(buf, 2, nullptr, 0); // enable EXTCLK if possible
-
-	if (OK != ret) {
-		PX4_ERR("init: i2c::transfer returned %d", ret);
-		return ret;
-	}
-
-#endif
 
 	buf[0] = PCA9685_REG_MODE2;
 	buf[1] = PCA9685_DEFAULT_MODE2_CFG;
@@ -164,6 +157,9 @@ int PCA9685::wake()
 		PCA9685_REG_MODE1,
 		PCA9685_DEFAULT_MODE1_CFG
 	};
+#ifdef CONFIG_PCA9685_USE_EXTERNAL_CRYSTAL
+	buf[1] = PCA9685_DEFAULT_MODE1_CFG | PCA9685_MODE1_SLEEP_MASK | PCA9685_MODE1_EXTCLK_MASK; // put into sleep mode
+#endif
 	return transfer(buf, 2, nullptr, 0);
 }
 
@@ -216,8 +212,22 @@ int PCA9685::writePWM(uint8_t idx, const uint16_t *value, uint8_t num)
 
 int PCA9685::setDivider(uint8_t value)
 {
+#ifndef CONFIG_PCA9685_USE_EXTERNAL_CRYSTAL
+	// in this case, we must change pca9685 to sleep mode
+	sleep();
+#endif
 	uint8_t buf[2] = {};
 	buf[0] = PCA9685_REG_PRE_SCALE;
 	buf[1] = value;
-	return transfer(buf, 2, nullptr, 0);
+	int ret = transfer(buf, 2, nullptr, 0);
+
+	if (OK != ret) {
+		PX4_ERR("init: i2c::transfer returned %d", ret);
+		return ret;
+	}
+
+#ifndef CONFIG_PCA9685_USE_EXTERNAL_CRYSTAL
+	wake();
+#endif
+	return PX4_OK;
 }
