@@ -1,0 +1,8 @@
+[Unit]
+Description="PX4 flight control service"
+
+[Service]
+ExecStart=taskset -c 2 /home/pi/px4/bin/px4 -s /home/pi/px4/pilotpi_mc.config -d
+
+[Install]
+WantedBy=multi-user.target
