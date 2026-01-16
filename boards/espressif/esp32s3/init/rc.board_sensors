@@ -1,0 +1,7 @@
+#!/bin/sh
+#
+# board specific sensors init
+#------------------------------------------------------------------------------
+icm42688p start -s -b 2
+ms5611 start -I
+ist8310 start -I

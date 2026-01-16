@@ -1,0 +1,10 @@
+#!/bin/sh
+#
+# board specific defaults
+#------------------------------------------------------------------------------
+param set MAV_TYPE 2
+param set SYS_AUTOSTART 4001
+
+param set-default BAT1_V_DIV 11
+
+board_adc start
