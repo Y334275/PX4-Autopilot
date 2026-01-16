@@ -1,0 +1,157 @@
+/****************************************************************************
+ *
+ *   Copyright (c) 2019 PX4 Development Team. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in
+ *    the documentation and/or other materials provided with the
+ *    distribution.
+ * 3. Neither the name PX4 nor the names of its contributors may be
+ *    used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+ * FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+ * COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
+ * OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+ * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ *
+ ****************************************************************************/
+#pragma once
+
+#include <board_config.h>
+#include <hardware/esp32s3_soc.h>
+
+#undef BOARD_ADC_POS_REF_V
+#if defined(ESP32S3_ATTENUATION_2_5)
+# define BOARD_ADC_POS_REF_V		1.25
+# define ATTENUATION_VALUE		1
+#elif defined(ESP32S3_ATTENUATION_6)
+# define BOARD_ADC_POS_REF_V		1.75
+# define ATTENUATION_VALUE		2
+#elif defined(ESP32S3_ATTENUATION_12)
+# define BOARD_ADC_POS_REF_V		3.1
+# define ATTENUATION_VALUE		3
+#else
+# define BOARD_ADC_POS_REF_V		0.95
+# define ATTENUATION_VALUE		0
+#endif
+
+# define SYSTEM_ADC_BASE 	DR_REG_SENS_BASE
+# define HW_REV_VER_ADC_BASE 	DR_REG_SENS_BASE
+
+// ============> SENS_SAR_READER1/2_CTRL_REG
+#define SENS_SAR_CLK_DIV		0x000000ff
+#define SENS_SAR_CLK_DIV_M		(SENS_SAR_CLK_DIV_V << SENS_SAR_CLK_DIV_S)
+#define SENS_SAR_CLK_DIV_V		0x000000ff
+#define SENS_SAR_CLK_DIV_S		0
+// <============ SENS_SAR_READER1/2_CTRL_REG
+
+// ============> SENS_SAR_MEAS1/2_CTRL2_REG
+#define SENS_MEAS_DATA_SAR		0x0000ffff
+#define SENS_MEAS_DATA_SAR_M		(SENS_MEAS_DATA_SAR_V << SENS_MEAS_DATA_SAR_S)
+#define SENS_MEAS_DATA_SAR_V		0x0000ffff
+#define SENS_MEAS_DATA_SAR_S		0
+
+#define SENS_MEAS_DONE_SAR		(BIT(16))
+#define SENS_MEAS_DONE_SAR_M		(SENS_MEAS_DONE_SAR_V << SENS_MEAS_DONE_SAR_S)
+#define SENS_MEAS_DONE_SAR_V		0x00000001
+#define SENS_MEAS_DONE_SAR_S		16
+
+#define SENS_MEAS_START_SAR		(BIT(17))
+#define SENS_MEAS_START_SAR_M		(SENS_MEAS_START_SAR_V << SENS_MEAS_START_SAR_S)
+#define SENS_MEAS_START_SAR_V		0x00000001
+#define SENS_MEAS_START_SAR_S		17
+
+#define SENS_MEAS_START_FORCE		(BIT(18))
+#define SENS_MEAS_START_FORCE_M		(SENS_MEAS_START_FORCE_V << SENS_MEAS_START_FORCE_S)
+#define SENS_MEAS_START_FORCE_V		0x00000001
+#define SENS_MEAS_START_FORCE_S		18
+
+#define SENS_SAR_EN_PAD			0x00000fff
+#define SENS_SAR_EN_PAD_M		(SENS_SAR_EN_PAD_V << SENS_SAR_EN_PAD_S)
+#define SENS_SAR_EN_PAD_V		0x00000fff
+#define SENS_SAR_EN_PAD_S		19
+
+#define SENS_SAR_EN_PAD_FORCE		(BIT(31))
+#define SENS_SAR_EN_PAD_FORCE_M		(SENS_SAR_EN_PAD_FORCE_V << SENS_SAR_EN_PAD_FORCE_S)
+#define SENS_SAR_EN_PAD_FORCE_V		0x00000001
+#define SENS_SAR_EN_PAD_FORCE_S		31
+// <============ SENS_SAR_MEAS1/2_CTRL2_REG
+
+// ============> SENS_SAR_PERI_CLK_GATE_CONF_REG
+#define SENS_TSENS_CLK_EN		(BIT(29))
+#define SENS_TSENS_CLK_EN_M		(SENS_TSENS_CLK_EN_V << SENS_TSENS_CLK_EN_S)
+#define SENS_TSENS_CLK_EN_V		0x00000001
+#define SENS_TSENS_CLK_EN_S		29
+
+#define SENS_SARADC_CLK_EN		(BIT(30))
+#define SENS_SARADC_CLK_EN_M		(SENS_SARADC_CLK_EN_V << SENS_SARADC_CLK_EN_S)
+#define SENS_SARADC_CLK_EN_V		0x00000001
+#define SENS_SARADC_CLK_EN_S		30
+
+#define SENS_IOMUX_CLK_EN		(BIT(31))
+#define SENS_IOMUX_CLK_EN_M		(SENS_IOMUX_CLK_EN_V << SENS_IOMUX_CLK_EN_S)
+#define SENS_IOMUX_CLK_EN_V		0x00000001
+#define SENS_IOMUX_CLK_EN_S		31
+// <============ SENS_SAR_PERI_CLK_GATE_CONF_REG
+
+// ============> SENS_SAR_PERI_RESET_CONF_REG
+#define SENS_TSENS_RESET		(BIT(29))
+#define SENS_TSENS_RESET_M		(SENS_TSENS_RESET_V << SENS_TSENS_RESET_S)
+#define SENS_TSENS_RESET_V		0x00000001
+#define SENS_TSENS_RESET_S		29
+// <============ SENS_SAR_PERI_RESET_CONF_REG
+
+// ============> SENS_SAR_TSENS_CTRL_REG
+#define SENS_TSENS_OUT			0x000000ff
+#define SENS_TSENS_OUT_M		(SENS_TSENS_OUT_V << SENS_TSENS_OUT_S)
+#define SENS_TSENS_OUT_V		0x000000ff
+#define SENS_TSENS_OUT_S		0
+
+#define SENS_TSENS_READY		(BIT(8))
+#define SENS_TSENS_READY_M		(SENS_TSENS_READY_V << SENS_TSENS_READY_S)
+#define SENS_TSENS_READY_V		0x00000001
+#define SENS_TSENS_READY_S		8
+
+#define SENS_TSENS_CLK_DIV		0x000000ff
+#define SENS_TSENS_CLK_DIV_M		(SENS_TSENS_CLK_DIV_V << SENS_TSENS_CLK_DIV_S)
+#define SENS_TSENS_CLK_DIV_V		0x000000ff
+#define SENS_TSENS_CLK_DIV_S		14
+
+#define SENS_TSENS_POWER_UP		(BIT(22))
+#define SENS_TSENS_POWER_UP_M		(SENS_TSENS_POWER_UP_V << SENS_TSENS_POWER_UP_S)
+#define SENS_TSENS_POWER_UP_V		0x00000001
+#define SENS_TSENS_POWER_UP_S		22
+
+#define SENS_TSENS_POWER_UP_FORCE	(BIT(23))
+#define SENS_TSENS_POWER_UP_FORCE_M	(SENS_TSENS_POWER_UP_FORCE_V << SENS_TSENS_POWER_UP_FORCE_S)
+#define SENS_TSENS_POWER_UP_FORCE_V	0x00000001
+#define SENS_TSENS_POWER_UP_FORCE_S	23
+
+#define SENS_TSENS_DUMP_OUT		(BIT(24))
+#define SENS_TSENS_DUMP_OUT_M		(SENS_TSENS_DUMP_OUT_V << SENS_TSENS_DUMP_OUT_S)
+#define SENS_TSENS_DUMP_OUT_V		0x00000001
+#define SENS_TSENS_DUMP_OUT_S		24
+// <============ SENS_SAR_TSENS_CTRL_REG
+
+// ============> SENS_SAR_POWER_XPD_SAR_REG
+#define SENS_FORCE_XPD_SAR		0x00000003
+#define SENS_FORCE_XPD_SAR_M		(SENS_FORCE_XPD_SAR_V << SENS_FORCE_XPD_SAR_S)
+#define SENS_FORCE_XPD_SAR_V		0x00000003
+#define SENS_FORCE_XPD_SAR_S		29
+// <============ SENS_SAR_POWER_XPD_SAR_REG
+#include <px4_platform/adc.h>
