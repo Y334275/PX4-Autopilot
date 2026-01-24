@@ -2,6 +2,6 @@
 #
 # board specific sensors init
 #------------------------------------------------------------------------------
-icm42688p start -s -b 2
-ms5611 start -I
-ist8310 start -I
+icm42688p start -s -f 20000
+ist8310 start -I -b 1
+ms5611 start -I -b 1

@@ -41,46 +41,38 @@
 
 extern "C" {
 #include <xtensa.h>
+#include <hardware/regi2c_ctrl.h>
 }
 #include <esp32s3_gpio.h>
 #include <hardware/esp32s3_rtccntl.h>
 #include <hardware/esp32s3_system.h>
+#include <hardware/regi2c_saradc.h>
 
-#define SET_ATTENUATION(ch)		((ATTENUATION_VALUE) << (ch * 2))
-
-#define DEFAULT_ATTENUATION_REG_VALUE	(SET_ATTENUATION(0) \
-		| SET_ATTENUATION(1) \
-		| SET_ATTENUATION(2) \
-		| SET_ATTENUATION(3) \
-		| SET_ATTENUATION(4) \
-		| SET_ATTENUATION(5) \
-		| SET_ATTENUATION(6) \
-		| SET_ATTENUATION(7) \
-		| SET_ATTENUATION(8) \
-		| SET_ATTENUATION(9))
+#include <esp_efuse_rtc_calib.h>
 
 #ifdef ESP32S3_USE_ADC2
 # define SENS_SAR_READER_CTRL_REG(a)	((a) + 0x24)
 # define SENS_SAR_MEAS_CTRL2_REG(a)	((a) + 0x30)
 # define SENS_SAR_MEAS_MUX_REG(a)	((a) + 0x34)
 # define SENS_SAR_ATTEN_REG(a)		((a) + 0x38)
-# define RTCIO_OFFSET			10
+# define SENS_SAR_DATA_INV		SENS_SAR2_DATA_INV
+# define RTCIO_OFFSET			11	// adc2 start from gpio11
+# define ADC_UINT			1
 #else // else ESP32S3_USE_ADC2
 # define SENS_SAR_READER_CTRL_REG(a)	((a) + 0x0)
 # define SENS_SAR_MEAS_CTRL2_REG(a)	((a) + 0xc)
 # define SENS_SAR_MEAS_MUX_REG(a)	((a) + 0x10)
 # define SENS_SAR_ATTEN_REG(a)		((a) + 0x14)
 # define RTCIO_OFFSET			0
+# define SENS_SAR_DATA_INV		SENS_SAR1_DATA_INV
+# define ADC_UINT			0
 #endif // ESP32S3_USE_ADC2
-
-#define SENS_SAR_PERI_CLK_GATE_CONF_REG	(DR_REG_SENS_BASE + 0x104)
-#define SENS_SAR_PERI_RESET_CONF_REG	(DR_REG_SENS_BASE + 0x108)
-#define SENS_SAR_TSENS_CTRL_REG		(DR_REG_SENS_BASE + 0x50)
-#define SENS_SAR_POWER_XPD_SAR_REG	(DR_REG_SENS_BASE + 0x3c)
 
 #define SOC_RTCIO_PIN_COUNT   		22
 
 #define ESP32S3_ADC_MAX_CHANNELS	10
+
+#define DEFAULT_ATTEN			0x3
 
 #ifdef PX4_ADC_INTERNAL_TEMP_SENSOR_CHANNEL
 # if PX4_ADC_INTERNAL_TEMP_SENSOR_CHANNEL < ESP32S3_ADC_MAX_CHANNELS
@@ -92,14 +84,7 @@ extern "C" {
 
 #define RTCIO_NUM(c)			(RTCIO_OFFSET + (c))
 
-enum {
-	DISABLE_FORCE_POWER_UP = 0,
-	DISABLE_FORCE_POWER_OFF,
-	FORCE_POWER_UP,
-	FORCE_POWER_OFF
-};
-
-uint16_t enabled_channels = 0;
+static uint16_t enabled_channels = 0;
 
 typedef struct {
 	uint32_t reg;       /*!< Register of RTC pad, or 0 if not an RTC GPIO */
@@ -144,6 +129,18 @@ int px4_arch_adc_init(uint32_t base_address)
 
 	uint32_t *free = nullptr;
 
+	uint32_t init_code = 0;
+	int version = esp_efuse_rtc_calib_get_ver();
+
+	if ((version >= ESP_EFUSE_ADC_CALIB_VER_MIN) &&
+	    (version <= ESP_EFUSE_ADC_CALIB_VER_MAX)) {
+		// Guarantee the calibration version before calling efuse function
+		init_code = esp_efuse_rtc_calib_get_init_code(version, ADC_UINT, DEFAULT_ATTEN);
+
+	} else {
+		return ERROR;
+	}
+
 	for (uint32_t i = 0; i < SYSTEM_ADC_COUNT; i++) {
 		if (once[i] == base_address) {
 
@@ -168,32 +165,46 @@ int px4_arch_adc_init(uint32_t base_address)
 
 	*free = base_address;
 
-	putreg32(SENS_SAR_CLK_DIV_M & (1 << SENS_SAR_CLK_DIV_S), SENS_SAR_READER_CTRL_REG(base_address));
+	modifyreg32(SYSTEM_PERIP_CLK_EN0_REG, 0, SYSTEM_APB_SARADC_CLK_EN);
+	modifyreg32(SYSTEM_PERIP_RST_EN0_REG, SYSTEM_APB_SARADC_RST, 0);
+
+	modifyreg32(SENS_SAR_READER_CTRL_REG(base_address), SENS_SAR_DATA_INV, 1 << SENS_SAR1_CLK_DIV_S);
 
 	modifyreg32(SENS_SAR_PERI_CLK_GATE_CONF_REG, 0, SENS_SARADC_CLK_EN | SENS_IOMUX_CLK_EN | SENS_TSENS_CLK_EN);
 
-	// enable software control
-	modifyreg32(SENS_SAR_MEAS_CTRL2_REG(base_address), SENS_SAR_EN_PAD_M, SENS_MEAS_START_FORCE | SENS_SAR_EN_PAD_FORCE);
+	modifyreg32(SENS_SAR_MEAS_CTRL2_REG(base_address), 0, SENS_MEAS1_START_FORCE | SENS_SAR1_EN_PAD_FORCE);
 
-	// set attenuation
-	putreg32(DEFAULT_ATTENUATION_REG_VALUE, SENS_SAR_ATTEN_REG(base_address));
+#ifdef ESP32S3_USE_ADC2
+	modifyreg32(APB_SARADC_APB_ADC_ARB_CTRL_REG, APB_SARADC_ADC_ARB_GRANT_FORCE,
+		    APB_SARADC_ADC_ARB_FIX_PRIORITY | (1 << APB_SARADC_ADC_ARB_RTC_PRIORITY_S) | (2 << APB_SARADC_ADC_ARB_WIFI_PRIORITY_S));
+
+	REGI2C_WRITE_MASK(I2C_ADC, I2C_ADC2_DEF, 4);
+	REGI2C_WRITE_MASK(I2C_ADC, I2C_ADC2_INITVAL_H, init_code >> 8);
+	REGI2C_WRITE_MASK(I2C_ADC, I2C_ADC2_INITVAL_L, init_code & 0xff);
+#else
+	REGI2C_WRITE_MASK(I2C_ADC, I2C_ADC1_DEF, 4);
+	REGI2C_WRITE_MASK(I2C_ADC, I2C_ADC1_INITVAL_H, init_code >> 8);
+	REGI2C_WRITE_MASK(I2C_ADC, I2C_ADC1_INITVAL_L, init_code & 0xff);
+#endif
 
 	// enable temperature sensor
 	modifyreg32(SENS_SAR_TSENS_CTRL_REG, SENS_TSENS_DUMP_OUT,
 		    SENS_TSENS_POWER_UP | SENS_TSENS_POWER_UP_FORCE);
-	modifyreg32(SYSTEM_PERIP_CLK_EN0_REG, 0, SYSTEM_APB_SARADC_CLK_EN);
-	modifyreg32(SYSTEM_PERIP_RST_EN0_REG, SYSTEM_APB_SARADC_RST, 0);
 
 	// power up
-	putreg32(FORCE_POWER_UP, SENS_SAR_POWER_XPD_SAR_REG);
-	return 0;
+	putreg32(0x3, SENS_SAR_POWER_XPD_SAR_REG);
+
+	return OK;
 }
 
 void px4_arch_adc_uninit(uint32_t base_address)
 {
 	// disable temperature sensor
 	modifyreg32(SENS_SAR_TSENS_CTRL_REG, SENS_TSENS_POWER_UP, 0);
-	putreg32(FORCE_POWER_OFF, SENS_SAR_POWER_XPD_SAR_REG);
+	putreg32(0x0, SENS_SAR_POWER_XPD_SAR_REG);
+
+	modifyreg32(SYSTEM_PERIP_CLK_EN0_REG, SYSTEM_APB_SARADC_CLK_EN, 0);
+	modifyreg32(SYSTEM_PERIP_RST_EN0_REG, 0, SYSTEM_APB_SARADC_RST);
 }
 
 uint32_t px4_arch_adc_sample(uint32_t base_address, unsigned channel)
@@ -219,6 +230,8 @@ uint32_t px4_arch_adc_sample(uint32_t base_address, unsigned channel)
 
 		uint32_t result = (getreg32(SENS_SAR_TSENS_CTRL_REG) & SENS_TSENS_OUT_M) >> SENS_TSENS_OUT_S;
 
+		px4_leave_critical_section(flags);
+
 		return result;
 	}
 
@@ -227,29 +240,28 @@ uint32_t px4_arch_adc_sample(uint32_t base_address, unsigned channel)
 		return UINT32_MAX;
 	}
 
-	bool enabled = enabled_channels & (1 << channel);
 
-	if (!enabled) {
+	if ((enabled_channels & (1 << channel)) == 0) {
 		enabled_channels |= (1 << channel);
 		putreg32(rtc_io_desc[RTCIO_NUM(channel)].mux, rtc_io_desc[RTCIO_NUM(channel)].reg);
-		modifyreg32(rtc_io_desc[RTCIO_NUM(channel)].reg, RTC_IO_TOUCH_PAD1_FUN_SEL_V,
-			    (0 & RTC_IO_TOUCH_PAD1_FUN_SEL_V) << rtc_io_desc[RTCIO_NUM(channel)].func);
-		modifyreg32(RTC_GPIO_ENABLE_W1TC_REG, 0, RTCIO_NUM(channel) << RTC_GPIO_ENABLE_W1TC_S);
+		modifyreg32(rtc_io_desc[RTCIO_NUM(channel)].reg, RTC_IO_TOUCH_PAD1_FUN_SEL_M,
+			    0 << rtc_io_desc[RTCIO_NUM(channel)].func);
+		modifyreg32(RTC_GPIO_ENABLE_W1TC_REG, 0, (1 << RTCIO_NUM(channel)) << RTC_GPIO_ENABLE_W1TC_S);
 		modifyreg32(rtc_io_desc[RTCIO_NUM(channel)].reg,
 			    rtc_io_desc[RTCIO_NUM(channel)].ie | rtc_io_desc[RTCIO_NUM(channel)].pulldown | rtc_io_desc[RTCIO_NUM(channel)].pullup, 0);
 	}
 
 	// set channel
-	modifyreg32(SENS_SAR_MEAS_CTRL2_REG(base_address), SENS_SAR_EN_PAD_M, (1 << channel) << SENS_SAR_EN_PAD_S);
+	modifyreg32(SENS_SAR_MEAS_CTRL2_REG(base_address), SENS_SAR1_EN_PAD_M, ((1 << channel) << SENS_SAR1_EN_PAD_S));
 
 	// sample once
-	modifyreg32(SENS_SAR_MEAS_CTRL2_REG(base_address), SENS_MEAS_START_SAR, 0);
-	modifyreg32(SENS_SAR_MEAS_CTRL2_REG(base_address), 0, SENS_MEAS_START_SAR);
+	modifyreg32(SENS_SAR_MEAS_CTRL2_REG(base_address), SENS_MEAS1_START_SAR, 0);
+	modifyreg32(SENS_SAR_MEAS_CTRL2_REG(base_address), 0, SENS_MEAS1_START_SAR);
 
 	/* wait for the conversion to complete */
 	const hrt_abstime now = hrt_absolute_time();
 
-	while (!(getreg32(SENS_SAR_MEAS_CTRL2_REG(base_address)) & SENS_MEAS_DONE_SAR)) {
+	while (!(getreg32(SENS_SAR_MEAS_CTRL2_REG(base_address)) & SENS_MEAS1_DONE_SAR)) {
 
 		/* don't wait for more than 50us, since that means something broke - should reset here if we see this */
 		if ((hrt_absolute_time() - now) > 50) {
@@ -259,7 +271,7 @@ uint32_t px4_arch_adc_sample(uint32_t base_address, unsigned channel)
 	}
 
 	/* read the result and clear EOC */
-	uint32_t result = (getreg32(SENS_SAR_MEAS_CTRL2_REG(base_address)) & SENS_MEAS_DATA_SAR_M) >> SENS_MEAS_DATA_SAR_S;
+	uint32_t result = (getreg32(SENS_SAR_MEAS_CTRL2_REG(base_address)) & SENS_MEAS1_DATA_SAR_M) >> SENS_MEAS1_DATA_SAR_S;
 
 	px4_leave_critical_section(flags);
 

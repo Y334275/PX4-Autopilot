@@ -33,11 +33,15 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include "xtensa.h"
+#ifdef __cplusplus
+}
+#endif
 #include "hardware/esp32s3_soc.h"
-
-// NOTE: these prescales only work on esp32s3
-#define SOC_RMT_PRESCALE 1
-#define SOC_RMT_CHANNEL_PRESCALE 1
+#include <hardware/esp32s3_gpio_sigmap.h>
 
 // depend on soc, eg: esp32s3 has 48 words per channel
 #ifndef SOC_RMT_MEM_WORDS_PER_CHANNEL
@@ -51,7 +55,7 @@
 
 #define RMT_DATA_REG_CH(i) (DR_REG_RMT_BASE + (i) * 0x4)
 
-#define RMT_CHxCONF0_REG(i) (DR_REG_RMT_BASE + ((i) > 3 ? (((i) - 4) * 0x8 + 0x30) : ((i) * 0x4 + 0x20)))
+#define RMT_CONF0_REG_CH(i) (DR_REG_RMT_BASE + ((i) > 3 ? (((i) - 4) * 0x8 + 0x30) : ((i) * 0x4 + 0x20)))
 #define RMT_CONF1_REG_CH(i) (DR_REG_RMT_BASE + ((i) - 4) * 0x8 + 0x34)
 #define RMT_RX_CARRIER_RM_REG_CH(i) (DR_REG_RMT_BASE + ((i) - 4) * 0x4 + 0x90)
 #define RMT_SYS_CONF_REG (DR_REG_RMT_BASE + 0xc0)
@@ -76,27 +80,32 @@
 #define RMTMEM_BASE (DR_REG_RMT_BASE + 0x800)
 
 // RMT_SYS_CONF_REG (0x00C0)
+#define RMT_APB_FIFO_MASK 	(BIT(0))
+#define RMT_APB_FIFO_MASK_M (RMT_APB_FIFO_MASK_V << RMT_APB_FIFO_MASK_S)
+#define RMT_APB_FIFO_MASK_V 0x00000001
+#define RMT_APB_FIFO_MASK_S 0
+
 #define RMT_MEM_CLK_FORCE_ON 	(BIT(1))
 #define RMT_MEM_CLK_FORCE_ON_M (RMT_MEM_CLK_FORCE_ON_V << RMT_MEM_CLK_FORCE_ON_S)
 #define RMT_MEM_CLK_FORCE_ON_V 0x00000001
 #define RMT_MEM_CLK_FORCE_ON_S 1
 
-#define RMT_SCLK_DIV_NUM 0x00000ff0
+#define RMT_SCLK_DIV_NUM 0xff
 #define RMT_SCLK_DIV_NUM_M (RMT_SCLK_DIV_NUM_V << RMT_SCLK_DIV_NUM_S)
 #define RMT_SCLK_DIV_NUM_V 0x000000ff
 #define RMT_SCLK_DIV_NUM_S 4
 
-#define RMT_SCLK_DIV_A 0x0003f000
+#define RMT_SCLK_DIV_A 0x3f
 #define RMT_SCLK_DIV_A_M (RMT_SCLK_DIV_A_V << RMT_SCLK_DIV_A_S)
 #define RMT_SCLK_DIV_A_V 0x0000003f
 #define RMT_SCLK_DIV_A_S 12
 
-#define RMT_SCLK_DIV_B 0x00fc0000
+#define RMT_SCLK_DIV_B 0x3f
 #define RMT_SCLK_DIV_B_M (RMT_SCLK_DIV_B_V << RMT_SCLK_DIV_B_S)
 #define RMT_SCLK_DIV_B_V 0x0000003f
 #define RMT_SCLK_DIV_B_S 18
 
-#define RMT_SCLK_SEL 0x3f000000
+#define RMT_SCLK_SEL 0x3
 #define RMT_SCLK_SEL_M (RMT_SCLK_SEL_V << RMT_SCLK_SEL_S)
 #define RMT_SCLK_SEL_V 0x00000003
 #define RMT_SCLK_SEL_S 24
@@ -127,17 +136,17 @@
 #define RMT_APB_MEM_RST_V 0x00000001
 #define RMT_APB_MEM_RST_S 2
 
-#define RMT_TX_CONTI_MODE (BIT(4))
+#define RMT_TX_CONTI_MODE (BIT(3))
 #define RMT_TX_CONTI_MODE_M (RMT_TX_CONTI_MODE_V << RMT_TX_CONTI_MODE_S)
 #define RMT_TX_CONTI_MODE_V 0x00000001
-#define RMT_TX_CONTI_MODE_S 4
+#define RMT_TX_CONTI_MODE_S 3
 
-#define RMT_MEM_TX_WRAP_EN (BIT(3))
+#define RMT_MEM_TX_WRAP_EN (BIT(4))
 #define RMT_MEM_TX_WRAP_EN_M (RMT_MEM_TX_WRAP_EN_V << RMT_MEM_TX_WRAP_EN_S)
 #define RMT_MEM_TX_WRAP_EN_V 0x00000001
-#define RMT_MEM_TX_WRAP_EN_S 3
+#define RMT_MEM_TX_WRAP_EN_S 4
 
-#define RMT_IDLE_OUT_LV (BIT(6))
+#define RMT_IDLE_OUT_LV (BIT(5))
 #define RMT_IDLE_OUT_LV_M (RMT_IDLE_OUT_LV_V << RMT_IDLE_OUT_LV_S)
 #define RMT_IDLE_OUT_LV_V 0x00000001
 #define RMT_IDLE_OUT_LV_S 5
@@ -152,15 +161,20 @@
 #define RMT_TX_STOP_V 0x00000001
 #define RMT_TX_STOP_S 7
 
-#define RMT_DIV_CNT 0x0000ff00
+#define RMT_DIV_CNT 0xff
 #define RMT_DIV_CNT_M (RMT_DIV_CNT_V << RMT_DIV_CNT_S)
 #define RMT_DIV_CNT_V 0x000000ff
 #define RMT_DIV_CNT_S 8
 
-#define RMT_MEM_SIZE 0x000f0000
+#define RMT_MEM_SIZE 0xf
 #define RMT_MEM_SIZE_M (RMT_MEM_SIZE_V << RMT_MEM_SIZE_S)
 #define RMT_MEM_SIZE_V 0x0000000f
 #define RMT_MEM_SIZE_S 16
+
+#define RMT_CARRIER_EN (BIT(21))
+#define RMT_CARRIER_EN_M (RMT_CARRIER_EN_V << RMT_CARRIER_EN_S)
+#define RMT_CARRIER_EN_V 0x00000001
+#define RMT_CARRIER_EN_S 21
 
 #define RMT_CONF_UPDATE (BIT(24))
 #define RMT_CONF_UPDATE_M (RMT_CONF_UPDATE_V << RMT_CONF_UPDATE_S)
@@ -168,7 +182,7 @@
 #define RMT_CONF_UPDATE_S 24
 
 // RMT_CHn_TX_LIM_REG (n: 0-3) (0x00A0+0x4*n)
-#define RMT_TX_LOOP_NUM 0x0003ff00
+#define RMT_TX_LOOP_NUM 0x3ff
 #define RMT_TX_LOOP_NUM_M (RMT_TX_LOOP_NUM_V << RMT_TX_LOOP_NUM_S)
 #define RMT_TX_LOOP_NUM_V 0x000003ff
 #define RMT_TX_LOOP_NUM_S 9
@@ -191,26 +205,25 @@
 //  RMT_INT_ENA_REG (0x0078)
 #define RMT_TX_LOOP_INT_CH(i) (BIT(i + 12))
 
-enum {
-	RMT_CLK_APB = 1,
-	RMT_CLK_RC_FAST,
-	RMT_CLK_XTAL
-};
+#define rmt_start(ch)		modifyreg32(RMT_CONF0_REG_CH(ch), 0, RMT_TX_START)
+#define rmt_stop(ch)		modifyreg32(RMT_CONF0_REG_CH(ch), 0, RMT_TX_STOP | RMT_CONF_UPDATE)
+#define rmt_reset_ref_cnt(ch)	modifyreg32(RMT_REF_CNT_RST_REG, 0, (1 << (ch)))
+#define rmt_reset_mem(ch)	modifyreg32(RMT_CONF0_REG_CH(ch), 0, RMT_MEM_RD_RST | RMT_APB_MEM_RST)
+
+#define RMT_SCLK_FREQ_HZ	40000000
+
 /**
  * @brief The layout of RMT symbol stored in memory, which is decided by the hardware design
  */
 typedef union {
-	struct {
-		uint16_t duration0 : 15; /*!< Duration of level0 */
-		uint16_t level0 : 1;     /*!< Level of the first part */
-		uint16_t duration1 : 15; /*!< Duration of level1 */
-		uint16_t level1 : 1;     /*!< Level of the second part */
-	};
-	uint32_t val; /*!< Equivalent unsigned value for the RMT symbol */
-} rmt_symbol_word_t;
+		struct {
+			uint16_t duration0 : 15; /*!< Duration of level0 */
+			uint16_t level0 : 1;     /*!< Level of the first part */
+			uint16_t duration1 : 15; /*!< Duration of level1 */
+			uint16_t level1 : 1;     /*!< Level of the second part */
+		};
+		uint32_t val; /*!< Equivalent unsigned value for the RMT symbol */
+	} rmt_symbol_word_t;
 
-typedef struct {
-	struct {
-		rmt_symbol_word_t symbols[SOC_RMT_MEM_WORDS_PER_CHANNEL];
-	} channels[SOC_RMT_CHANNELS_PER_GROUP];
-} rmt_block_mem_t;
+#define STOP_BIT		((rmt_symbol_word_t){0})
+#define rmt_set_symbol(ch, i, value)	(*(rmt_symbol_word_t *)(RMTMEM_BASE + (ch) * 0x48 + (i) * 0x4) = (rmt_symbol_word_t)(value))

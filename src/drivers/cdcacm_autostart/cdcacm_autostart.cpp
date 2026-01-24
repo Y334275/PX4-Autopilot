@@ -496,11 +496,9 @@ bool CdcAcmAutostart::start_mavlink()
 {
 	bool success = false;
 	char mavlink_mode_string[3];
-#if defined(CONFIG_ARCH_CHIP_ESP32S3)
-	snprintf(mavlink_mode_string, sizeof(mavlink_mode_string), "%d", _usb_mav_mode.get());
-#else
+
 	snprintf(mavlink_mode_string, sizeof(mavlink_mode_string), "%ld", _usb_mav_mode.get());
-#endif
+
 	static const char *argv[] {"mavlink", "start", "-d", USB_DEVICE_PATH, "-m", mavlink_mode_string, nullptr};
 
 	if (execute_process((char **)argv) > 0) {

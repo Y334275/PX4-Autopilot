@@ -45,14 +45,14 @@ static inline constexpr px4_spi_bus_device_t initSPIDevice(uint32_t devid, SPI::
 {
 	px4_spi_bus_device_t ret{};
 
-	if (cs_gpio.pin == -1) {
+	if (cs_gpio.pin == 0) {
 		ret.cs_gpio = 0;
 
 	} else {
 		ret.cs_gpio = (cs_gpio.pin | GPIO_OUTPUT);
 	}
 
-	if (drdy_gpio.pin == -1) {
+	if (drdy_gpio.pin == 0) {
 		ret.drdy_gpio = 0;
 
 	} else {

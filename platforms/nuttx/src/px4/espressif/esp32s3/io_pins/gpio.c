@@ -9,6 +9,7 @@
 #include <syslog.h>
 #include <nuttx/irq.h>
 #include <arch/chip/irq.h>
+#include <esp32s3_gpio.h>
 
 int px4_arch_configgpio(uint32_t pinset)
 {
@@ -54,13 +55,13 @@ int px4_arch_gpiosetevent(uint32_t pinset, bool risingedge, bool fallingedge,
 		}
 
 		if (risingedge == true && fallingedge == true) {
-			esp32s3_gpioirqenable(irq, GPIO_INTR_ANYEDGE);
+			esp32s3_gpioirqenable(irq, CHANGE);
 
 		} else if (risingedge == true && fallingedge == false) {
-			esp32s3_gpioirqenable(irq, GPIO_INTR_POSEDGE);
+			esp32s3_gpioirqenable(irq, RISING);
 
 		} else if (risingedge == false && fallingedge == true) {
-			esp32s3_gpioirqenable(irq, GPIO_INTR_NEGEDGE);
+			esp32s3_gpioirqenable(irq, FALLING);
 		}
 
 	} else {

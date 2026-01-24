@@ -40,19 +40,13 @@
 
 #include <drivers/drv_hrt.h>
 
+#include <px4_arch/rmt.h>
+
 #pragma once
 __BEGIN_DECLS
 /* configuration limits */
-#ifdef BOARD_NUM_IO_TIMERS
-#define MAX_IO_TIMERS			BOARD_NUM_IO_TIMERS
-#else
-#define MAX_IO_TIMERS			1
-#endif
-#if DIRECT_PWM_OUTPUT_CHANNELS > 8
-#define MAX_TIMER_IO_CHANNELS	DIRECT_PWM_OUTPUT_CHANNELS
-#else
-#define MAX_TIMER_IO_CHANNELS	8
-#endif
+#define MAX_IO_TIMERS			1 // not used
+#define MAX_TIMER_IO_CHANNELS		4 // rmt has 4 channels
 
 #define MAX_LED_TIMERS			2
 #define MAX_TIMER_LED_CHANNELS	6
@@ -61,6 +55,9 @@ __BEGIN_DECLS
 #define MAX_TIMER_SPIX_SYNC_CHANNELS	2
 
 #define IO_TIMER_ALL_MODES_CHANNELS 0
+
+#define DSHOT_RESOLUTION_FREQ_HZ	40000000 // 40MHz
+#define PWM_RESOLUTION_FREQ_HZ		400000	// 400KHz
 
 typedef enum io_timer_channel_mode_t {
 	IOTimerChanMode_NotUsed = 0,

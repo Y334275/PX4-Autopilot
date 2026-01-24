@@ -146,6 +146,7 @@ file(GLOB_RECURSE nuttx_apps_files LIST_DIRECTORIES false
 )
 add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/apps/libapps.a
 	COMMAND ${CMAKE_COMMAND} -E remove -f ${APPS_DIR}/libapps.a ${APPS_DIR}/builtin/builtin_list.h ${APPS_DIR}/builtin/builtin_proto.h
+	COMMAND find ${APPS_DIR} -type f -name .built -delete # nuttx 12.12.0
 	COMMAND find ${APPS_DIR} -type f -name \*.o -delete
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_BINARY_DIR}/px4.bdat ${APPS_DIR}/builtin/registry/px4.bdat
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_BINARY_DIR}/px4.pdat ${APPS_DIR}/builtin/registry/px4.pdat
@@ -177,7 +178,7 @@ function(add_nuttx_dir nuttx_lib nuttx_lib_dir kernel extra target)
 	add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/nuttx/${nuttx_lib_dir}/lib${nuttx_lib}.a
 		COMMAND ${CMAKE_COMMAND} -E remove -f ${NUTTX_DIR}/${nuttx_lib_dir}/lib${nuttx_lib}.a
 		COMMAND find ${nuttx_lib_dir} -type f -name \*.o -delete
-		COMMAND make -C ${nuttx_lib_dir} --no-print-directory --silent ${nuttx_lib_target} TOPDIR="${NUTTX_DIR}" KERNEL=${kernel} EXTRAFLAGS=${extra}
+		COMMAND make -C ${nuttx_lib_dir} --no-print-directory --silent ${nuttx_lib_target} TOPDIR="${NUTTX_DIR}" KERNEL=${kernel} EXTRAFLAGS=${extra} -E "${PX4_EXTRA_MAKEFILE_STATEMENT}" # extra include
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different ${NUTTX_DIR}/${nuttx_lib_dir}/lib${nuttx_lib}.a ${CMAKE_CURRENT_BINARY_DIR}/nuttx/${nuttx_lib_dir}/lib${nuttx_lib}.a
 		DEPENDS
 			${nuttx_lib_files}
@@ -202,9 +203,9 @@ add_nuttx_dir(xx libs/libxx n "" all)
 add_nuttx_dir(crypto crypto y -D__KERNEL__ all)
 
 if (NOT CONFIG_BUILD_FLAT)
-	add_nuttx_dir(arch arch/${CONFIG_ARCH}/src n "" arch)
+	add_nuttx_dir(arch arch/${CONFIG_ARCH}/src n -D__NuttX__ arch)
 	add_dependencies(nuttx_arch_build nuttx_karch_build) # can't build these in parallel
-	add_nuttx_dir(karch arch/${CONFIG_ARCH}/src y -D__KERNEL__ karch)
+	add_nuttx_dir(karch arch/${CONFIG_ARCH}/src y "-D__KERNEL__ -D__NuttX__" karch)
 	add_nuttx_dir(c libs/libc n "" c)
 	add_dependencies(nuttx_c_build nuttx_kc_build) # can't build these in parallel
 	add_nuttx_dir(kc libs/libc y -D__KERNEL__ kc)
@@ -215,7 +216,7 @@ if (NOT CONFIG_BUILD_FLAT)
 	add_dependencies(nuttx_proxies_build nuttx_stubs_build) # can't build these in parallel
 	add_nuttx_dir(stubs syscall y -D__KERNEL__ stubs)
 else()
-	add_nuttx_dir(arch arch/${CONFIG_ARCH}/src y -D__KERNEL__ all)
+	add_nuttx_dir(arch arch/${CONFIG_ARCH}/src y "-D__KERNEL__ -D__NuttX__" all)
 	add_nuttx_dir(c libs/libc n "" all)
 	add_nuttx_dir(mm mm n "" mm)
 endif()

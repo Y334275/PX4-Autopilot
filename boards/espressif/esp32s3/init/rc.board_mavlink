@@ -3,3 +3,4 @@
 # board specific MAVLink startup script.
 #------------------------------------------------------------------------------
 
+mavlink start -u 14550 # udp

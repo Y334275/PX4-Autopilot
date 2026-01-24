@@ -129,7 +129,7 @@ bool SerialImpl::configure()
 
 	default:
 		speed = _baudrate;
-#if defined(CONFIG_ARCH_CHIP_ESP32) || defined(CONFIG_ARCH_CHIP_ESP32S3)
+#if defined(CONFIG_ARCH_CHIP_ESP32)
 		PX4_WARN("Using non-standard baudrate: %u", _baudrate);
 #else
 		PX4_WARN("Using non-standard baudrate: %lu", _baudrate);

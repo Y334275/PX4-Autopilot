@@ -32,13 +32,13 @@
 ############################################################################
 
 add_library(drivers_board
-	newlib.c
 	i2c.cpp
 	init.c
 	led.c
 	spi.cpp
 	timer_config.cpp
 	esp32s3_board_spiflash.c
+	esp32s3_board_wlan.c
 	mtd.cpp
 )
 
@@ -46,7 +46,6 @@ target_link_libraries(drivers_board
 	PRIVATE
 		arch_io_pins
 		arch_spi
-		arch_usb
 		drivers__led # drv_led_start
 		nuttx_arch # sdio
 		nuttx_drivers # sdio

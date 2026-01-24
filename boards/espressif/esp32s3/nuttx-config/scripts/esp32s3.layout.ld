@@ -33,6 +33,16 @@
 
 MEMORY
 {
+  /* The 0x20 offset is a convenience for the app binary image generation.
+   * Flash cache has 64KB pages. The .bin file which is flashed to the chip
+   * has a 0x18 byte file header, and each segment has a 0x08 byte segment
+   * header. Setting this offset makes it simple to meet the flash cache MMU's
+   * constraint that (paddr % 64KB == vaddr % 64KB).
+   */
+
+  ROM (RX) :             org = 0x20,
+                         len = 0x400000 - ORIGIN(ROM)
+
   /* Below values assume the flash cache is on, and have the blocks this
    * uses subtracted from the length of the various regions. The 'data access
    * port' dram/drom regions map to the same iram/irom regions but are
@@ -41,7 +51,7 @@ MEMORY
 
   /* IRAM for CPU */
 
-  iram0_0_seg (RX) :                 org = (0x40370000 + 0x4000), len = (((0x403ba000 - (0x40378000 - 0x3fc88000)) - 0x3fc88000) + 0x8000 - 0x4000)
+  iram0_0_seg (RX) :                 org = (0x40370000 + 0x4000), len = (((0x403c0000 - (0x40378000 - 0x3fc88000)) - 0x3fc88000) + 0x8000 - 0x4000)
 
   /* Flash mapped instruction data. */
 
@@ -52,7 +62,7 @@ MEMORY
    * bss/data/stack.
    */
 
-  dram0_0_seg (RW) :                 org = 0x3fc88000, len = ((0x403ba000 - (0x40378000 - 0x3fc88000)) - 0x3fc88000)
+  dram0_0_seg (RW) :                 org = (0x3fc88000), len = ((0x403c0000 - (0x40378000 - 0x3fc88000)) - 0x3fc88000)
 
   /* Flash mapped constant data */
 
@@ -88,7 +98,6 @@ MEMORY
    * A dummy section is used to avoid overlap. See `.ext_ram.dummy` in `esp32s3_sections.ld
    */
 
-  extern_ram_seg(RWX) :               org = 0x3c000020 , len = 0x2000000-0x20
 }
 
   REGION_ALIAS("default_rodata_seg", drom0_0_seg);

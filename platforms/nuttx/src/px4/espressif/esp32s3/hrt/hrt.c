@@ -49,6 +49,7 @@
 
 #include <nuttx/arch.h>
 #include <nuttx/irq.h>
+#include <nuttx/spinlock.h>
 
 #include <sys/types.h>
 #include <stdbool.h>
@@ -56,7 +57,7 @@
 #include <assert.h>
 #include <debug.h>
 #include <time.h>
-#include <queue.h>
+#include <sys/queue.h>
 #include <errno.h>
 #include <string.h>
 
@@ -65,6 +66,7 @@
 
 #include "esp32s3_irq.h"
 #include <esp32s3_clockconfig.h>
+#include <esp32s3_gpio.h>
 #include <hardware/esp32s3_system.h>
 #include <hardware/esp32s3_tim.h>
 
@@ -73,8 +75,12 @@
 
 #ifdef CONFIG_DEBUG_HRT
 #  define hrtinfo _info
+#  define hrtwarn _warn
+#  define hrterr _err
 #else
 #  define hrtinfo(x...)
+#  define hrtwarn(x...)
+#  define hrterr(x...)
 // #  define hrtinfo _info
 #endif
 
@@ -109,37 +115,65 @@
 # error HRT_TIMER must be a value between 0 and 3
 #endif
 
-#define _CONCAT(a, b) a##b
-#define CONCAT(a, b) _CONCAT(a, b)
+#if HRT_TIM_CHANNEL == 0
+#define HRT_TIM_CONFIG_REG		TIMG_T0CONFIG_REG(HRT_TIM_GROUP)
+#define HRT_TIM_LO_REG			TIMG_T0LO_REG(HRT_TIM_GROUP)
+#define HRT_TIM_HI_REG			TIMG_T0HI_REG(HRT_TIM_GROUP)
+#define HRT_TIM_UPDATE_REG		TIMG_T0UPDATE_REG(HRT_TIM_GROUP)
 
-#define HRT_TIMG_T			CONCAT(TIMG_T, HRT_TIM_CHANNEL)
-#define HRT_TIM_CONFIG_REG		CONCAT(HRT_TIMG_T, CONFIG_REG(HRT_TIM_GROUP))
-#define HRT_TIM_LO_REG			CONCAT(HRT_TIMG_T, LO_REG(HRT_TIM_GROUP))
-#define HRT_TIM_HI_REG			CONCAT(HRT_TIMG_T, HI_REG(HRT_TIM_GROUP))
-#define HRT_TIM_UPDATE_REG		CONCAT(HRT_TIMG_T, UPDATE_REG(HRT_TIM_GROUP))
+#define HRT_TIM_ALARMLO_REG		TIMG_T0ALARMLO_REG(HRT_TIM_GROUP)
+#define HRT_TIM_ALARMHI_REG		TIMG_T0ALARMHI_REG(HRT_TIM_GROUP)
 
-#define HRT_TIM_ALARMLO_REG		CONCAT(HRT_TIMG_T, ALARMLO_REG(HRT_TIM_GROUP))
-#define HRT_TIM_ALARMHI_REG		CONCAT(HRT_TIMG_T, ALARMHI_REG(HRT_TIM_GROUP))
-
-#define HRT_TIM_LOADLO_REG		CONCAT(HRT_TIMG_T, LOADLO_REG(HRT_TIM_GROUP))
-#define HRT_TIM_LOADHI_REG		CONCAT(HRT_TIMG_T, LOADHI_REG(HRT_TIM_GROUP))
-#define HRT_TIM_LOAD_REG		CONCAT(HRT_TIMG_T, LOAD_REG(HRT_TIM_GROUP))
-
-#define HRT_TIM_INT_CLR_TIMERS_REG	TIMG_INT_CLR_TIMERS_REG(HRT_TIM_GROUP)
+#define HRT_TIM_LOADLO_REG		TIMG_T0LOADLO_REG(HRT_TIM_GROUP)
+#define HRT_TIM_LOADHI_REG		TIMG_T0LOADHI_REG(HRT_TIM_GROUP)
+#define HRT_TIM_LOAD_REG		TIMG_T0LOAD_REG(HRT_TIM_GROUP)
+#define HRT_TIM_INT_ENA			TIMG_T0_INT_ENA
+#define HRT_TIM_INT_CLR			TIMG_T0_INT_CLR
 
 #if HRT_TIM_GROUP == 0
-# define HRT_TIM_PERIPH			CONCAT(CONCAT(ESP32S3_PERIPH_TG_T, HRT_TIM_CHANNEL), _LEVEL)
-# define HRT_TIM_IRQ	        	CONCAT(CONCAT(ESP32S3_IRQ_TG_T, HRT_TIM_CHANNEL), _LEVEL)
+# define HRT_TIM_PERIPH			ESP32S3_PERIPH_TG_T0_LEVEL
+# define HRT_TIM_IRQ	        	ESP32S3_IRQ_TG_T0_LEVEL
 # define HRT_TIMG_CLK_EN		SYSTEM_TIMERGROUP_CLK_EN
 # define HRT_TIMG_RST			SYSTEM_TIMERGROUP_RST
-#else
-# define HRT_TIM_PERIPH			CONCAT(CONCAT(ESP32S3_PERIPH_TG1_T, HRT_TIM_CHANNEL), _LEVEL)
-# define HRT_TIM_IRQ	        	CONCAT(CONCAT(ESP32S3_IRQ_TG1_T, HRT_TIM_CHANNEL), _LEVEL)
+#else // HRT_TIM_GROUP == 1
+# define HRT_TIM_PERIPH			ESP32S3_PERIPH_TG1_T0_LEVEL
+# define HRT_TIM_IRQ	        	ESP32S3_IRQ_TG1_T0_LEVEL
 # define HRT_TIMG_CLK_EN		SYSTEM_TIMERGROUP1_CLK_EN
 # define HRT_TIMG_RST			SYSTEM_TIMERGROUP1_RST
-#endif
-#define HRT_TIM_INT_ENA			CONCAT(HRT_TIMG_T, _INT_ENA)
-#define HRT_TIM_INT_CLR			CONCAT(HRT_TIMG_T, _INT_CLR)
+#endif // !HRT_TIM_GROUP
+
+#else // HRT_TIM_CHANNEL == 1
+
+#define HRT_TIM_CONFIG_REG		TIMG_T1CONFIG_REG(HRT_TIM_GROUP)
+#define HRT_TIM_LO_REG			TIMG_T1LO_REG(HRT_TIM_GROUP)
+#define HRT_TIM_HI_REG			TIMG_T1HI_REG(HRT_TIM_GROUP)
+#define HRT_TIM_UPDATE_REG		TIMG_T1UPDATE_REG(HRT_TIM_GROUP)
+
+#define HRT_TIM_ALARMLO_REG		TIMG_T1ALARMLO_REG(HRT_TIM_GROUP)
+#define HRT_TIM_ALARMHI_REG		TIMG_T1ALARMHI_REG(HRT_TIM_GROUP)
+
+#define HRT_TIM_LOADLO_REG		TIMG_T1LOADLO_REG(HRT_TIM_GROUP)
+#define HRT_TIM_LOADHI_REG		TIMG_T1LOADHI_REG(HRT_TIM_GROUP)
+#define HRT_TIM_LOAD_REG		TIMG_T1LOAD_REG(HRT_TIM_GROUP)
+
+#if HRT_TIM_GROUP == 0
+# define HRT_TIM_PERIPH			ESP32S3_PERIPH_TG_T1_LEVEL
+# define HRT_TIM_IRQ	        	ESP32S3_IRQ_TG_T1_LEVEL
+# define HRT_TIMG_CLK_EN		SYSTEM_TIMERGROUP_CLK_EN
+# define HRT_TIMG_RST			SYSTEM_TIMERGROUP_RST
+#else // HRT_TIM_GROUP == 1
+# define HRT_TIM_PERIPH			ESP32S3_PERIPH_TG1_T1_LEVEL
+# define HRT_TIM_IRQ	        	ESP32S3_IRQ_TG1_T1_LEVEL
+# define HRT_TIMG_CLK_EN		SYSTEM_TIMERGROUP1_CLK_EN
+# define HRT_TIMG_RST			SYSTEM_TIMERGROUP1_RST
+#endif // !HRT_TIM_GROUP
+
+#define HRT_TIM_INT_ENA			TIMG_T1_INT_ENA
+#define HRT_TIM_INT_CLR			TIMG_T1_INT_CLR
+
+#endif // !HRT_TIM_CHANNEL
+
+#define HRT_TIM_INT_CLR_TIMERS_REG	TIMG_INT_CLR_TIMERS_REG(HRT_TIM_GROUP)
 
 /**
  * Minimum/maximum deadlines.
@@ -156,6 +190,7 @@
 #define HRT_INTERVAL_MIN	50
 #define HRT_INTERVAL_MAX	50000
 
+static spinlock_t 	_hrt_lock;
 /*
  * Queue of callout entries.
  */
@@ -190,6 +225,16 @@ static void		hrt_call_invoke(void);
 
 int hrt_ioctl(unsigned int cmd, unsigned long arg);
 
+static inline irqstate_t hrt_lock(void)
+{
+	return spin_lock_irqsave(&_hrt_lock);
+}
+
+static inline void hrt_unlock(irqstate_t flags)
+{
+	spin_unlock_irqrestore(&_hrt_lock, flags);
+}
+
 /**
  * Initialise the timer we are going to use.
  *
@@ -200,8 +245,10 @@ int hrt_ioctl(unsigned int cmd, unsigned long arg);
 static void
 hrt_tim_init(void)
 {
-	// disable timer
-	modifyreg32(HRT_TIM_CONFIG_REG, TIMG_T0_EN_M, 0);
+	int ret, cpuint;
+	int cpu = this_cpu();
+	modifyreg32(SYSTEM_PERIP_CLK_EN0_REG, 0, HRT_TIMG_CLK_EN);
+	modifyreg32(SYSTEM_PERIP_RST_EN0_REG, HRT_TIMG_RST, 0);
 
 	// config timer to 1MHz
 	modifyreg32(HRT_TIM_CONFIG_REG, TIMG_T0_USE_XTAL, 0);
@@ -221,8 +268,21 @@ hrt_tim_init(void)
 	putreg32((uint32_t)high_64, HRT_TIM_ALARMHI_REG);
 
 	// set interrupt
-	esp32s3_setup_irq(0, HRT_TIM_PERIPH, 1, ESP32S3_CPUINT_LEVEL);
-	irq_attach(HRT_TIM_IRQ, hrt_tim_isr, NULL);
+	cpuint = esp32s3_setup_irq(cpu, HRT_TIM_PERIPH, 1, ESP32S3_CPUINT_LEVEL);
+
+	if (cpuint < 0) {
+		hrterr("ERROR: No CPU Interrupt available");
+		return;
+	}
+
+	ret = irq_attach(HRT_TIM_IRQ, hrt_tim_isr, NULL);
+
+	if (ret != OK) {
+		esp32s3_teardown_irq(cpu, HRT_TIM_PERIPH, cpuint);
+		hrterr("ERROR: Failed to associate an IRQ Number");
+		return;
+	}
+
 	up_enable_irq(HRT_TIM_IRQ);
 
 	modifyreg32(TIMG_INT_ENA_TIMERS_REG(HRT_TIM_GROUP), 0, HRT_TIM_INT_ENA);
@@ -235,6 +295,8 @@ hrt_tim_init(void)
 
 	// start timer
 	modifyreg32(HRT_TIM_CONFIG_REG, 0, TIMG_T0_EN);
+	hrtinfo("conf reg: %" PRIu32 ", alarm lo: %" PRIu32 ", alarm hi: %" PRIu32 ", divider: %" PRIu32 "\n", getreg32(HRT_TIM_CONFIG_REG),
+		getreg32(HRT_TIM_ALARMLO_REG), getreg32(HRT_TIM_ALARMHI_REG), divider);
 }
 
 /**
@@ -246,9 +308,12 @@ hrt_tim_isr(int irq, void *context, void *arg)
 {
 	/* grab the timer for latency tracking purposes */
 	uint32_t value_32;
+	irqstate_t flags;
+
 	latency_actual = 0;
 	/* Dummy value to latch the counter value to read it */
 	putreg32(TIMG_T0_UPDATE, HRT_TIM_UPDATE_REG);
+	hrtinfo("hrt interrupt");
 
 	// wait until UPDATE_REG become 0
 	while (getreg32(HRT_TIM_UPDATE_REG) != 0);
@@ -266,8 +331,10 @@ hrt_tim_isr(int irq, void *context, void *arg)
 	/* run any callouts that have met their deadline */
 	hrt_call_invoke();
 
+	flags = hrt_lock();
 	/* and schedule the next interrupt */
 	hrt_call_reschedule();
+	hrt_unlock(flags);
 
 	// acknowledge the interrupt
 	putreg32(HRT_TIM_INT_CLR, HRT_TIM_INT_CLR_TIMERS_REG);
@@ -284,8 +351,6 @@ hrt_abstime IRAM_ATTR
 hrt_absolute_time(void)
 {
 	hrt_abstime	abstime;
-	// uint64_t	count;
-	irqstate_t	flags;
 
 	/*
 	 * Counter state.  Marked volatile as they may change
@@ -296,7 +361,6 @@ hrt_absolute_time(void)
 	// static volatile uint64_t last_count;
 
 	/* prevent re-entry */
-	flags = px4_enter_critical_section();
 	putreg32(TIMG_T0_UPDATE, HRT_TIM_UPDATE_REG);
 
 	// wait until UPDATE_REG become 0
@@ -307,8 +371,6 @@ hrt_absolute_time(void)
 
 	abstime = (hrt_abstime)(high_32 | low_32);
 
-	px4_leave_critical_section(flags);
-
 	return abstime;
 }
 
@@ -318,9 +380,9 @@ hrt_absolute_time(void)
 void
 hrt_store_absolute_time(volatile hrt_abstime *t)
 {
-	irqstate_t flags = px4_enter_critical_section();
+	irqstate_t flags = hrt_lock();
 	*t = hrt_absolute_time();
-	px4_leave_critical_section(flags);
+	hrt_unlock(flags);
 }
 
 /**
@@ -330,6 +392,9 @@ void
 hrt_init(void)
 {
 	sq_init(&callout_queue);
+
+	spin_lock_init(&_hrt_lock);
+
 	hrt_tim_init();
 
 }
@@ -372,7 +437,7 @@ hrt_call_every(struct hrt_call *entry, hrt_abstime delay, hrt_abstime interval, 
 static void IRAM_ATTR
 hrt_call_internal(struct hrt_call *entry, hrt_abstime deadline, hrt_abstime interval, hrt_callout callout, void *arg)
 {
-	irqstate_t flags = px4_enter_critical_section();
+	irqstate_t flags = hrt_lock();
 
 	/* if the entry is currently queued, remove it */
 	/* note that we are using a potentially uninitialised
@@ -393,7 +458,7 @@ hrt_call_internal(struct hrt_call *entry, hrt_abstime deadline, hrt_abstime inte
 
 	hrt_call_enter(entry);
 
-	px4_leave_critical_section(flags);
+	hrt_unlock(flags);
 }
 
 /**
@@ -413,7 +478,7 @@ hrt_called(struct hrt_call *entry)
 void IRAM_ATTR
 hrt_cancel(struct hrt_call *entry)
 {
-	irqstate_t flags = px4_enter_critical_section();
+	irqstate_t flags = hrt_lock();
 
 	sq_rem(&entry->link, &callout_queue);
 	entry->deadline = 0;
@@ -423,7 +488,7 @@ hrt_cancel(struct hrt_call *entry)
 	 */
 	entry->period = 0;
 
-	px4_leave_critical_section(flags);
+	hrt_unlock(flags);
 }
 
 static void IRAM_ATTR
@@ -460,6 +525,8 @@ hrt_call_invoke(void)
 	struct hrt_call	*call;
 	hrt_abstime deadline;
 
+	irqstate_t flags = hrt_lock();
+
 	while (true) {
 		/* get the current time */
 		hrt_abstime now = hrt_absolute_time();
@@ -485,8 +552,13 @@ hrt_call_invoke(void)
 
 		/* invoke the callout (if there is one) */
 		if (call->callout) {
+			// Unlock so we don't deadlock in callback
+			hrt_unlock(flags);
+
 			hrtinfo("call %p: %p(%p)\n", call, call->callout, call->arg);
 			call->callout(call->arg);
+
+			flags = hrt_lock();
 		}
 
 		/* if the callout has a non-zero period, it has to be re-entered */
@@ -501,6 +573,8 @@ hrt_call_invoke(void)
 			hrt_call_enter(call);
 		}
 	}
+
+	hrt_unlock(flags);
 }
 
 /**
@@ -577,7 +651,9 @@ hrt_call_init(struct hrt_call *entry)
 void IRAM_ATTR
 hrt_call_delay(struct hrt_call *entry, hrt_abstime delay)
 {
+	irqstate_t flags = hrt_lock();
 	entry->deadline = hrt_absolute_time() + delay;
+	hrt_unlock(flags);
 }
 
 #endif /* HRT_TIMER */

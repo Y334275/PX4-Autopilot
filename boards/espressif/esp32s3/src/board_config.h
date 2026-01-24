@@ -51,8 +51,6 @@
 
 #define BOARD_SPI_BUS_MAX_BUS_ITEMS 2
 
-#define ESP32S3_ATTENUATION_12
-
 /*
  * ADC channels
  *
@@ -84,9 +82,10 @@
 // Has pwm outputs
 #define BOARD_HAS_PWM    		DIRECT_PWM_OUTPUT_CHANNELS
 
-#define GPIO_nLED_GREEN 		21 | GPIO_OUTPUT
+#define GPIO_nLED_GREEN 		47 | GPIO_OUTPUT
+#define GPIO_VBUS			21 | GPIO_INPUT
 
-#define BOARD_ADC_USB_CONNECTED 1
+#define BOARD_ADC_USB_CONNECTED 	(px4_arch_gpioread(GPIO_VBUS))
 
 __BEGIN_DECLS
 
@@ -96,7 +95,7 @@ extern void board_peripheral_reset(int ms);
 extern void esp32s3_spiinitialize(void);
 
 int board_spiflash_init(void);
-void esp_newlib_init(void);
+int board_wlan_init(void);
 
 #include <px4_platform_common/board_common.h>
 

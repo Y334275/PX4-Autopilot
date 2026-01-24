@@ -62,7 +62,7 @@
 #include <nuttx/sdio.h>
 #include <nuttx/mmcsd.h>
 #include <nuttx/mm/gran.h>
-
+#include <nuttx/usb/usbdev.h>
 
 #include <chip.h>
 #include "board_config.h"
@@ -78,8 +78,6 @@
 #include <px4_arch/io_timer.h>
 #include <px4_platform_common/init.h>
 #include <px4_platform/board_dma_alloc.h>
-
-// #include "esp32s3_board_wlan_setup.h"
 
 #include "esp32s3_rt_timer.h"
 /****************************************************************************
@@ -115,6 +113,13 @@ __EXPORT void board_peripheral_reset(int ms)
 {
 	UNUSED(ms);
 }
+
+#ifdef CONFIG_USBDEV
+__EXPORT void esp32s3_usbsuspend(struct usbdev_s *dev, bool resume)
+{
+	uinfo("resume: %d\n", resume);
+}
+#endif
 
 /************************************************************************************
  * Name: board_on_reset
@@ -178,13 +183,13 @@ esp32s3_board_initialize(void)
 	// /* Reset all PWM to Low outputs */
 	board_on_reset(-1);
 
-	esp_newlib_init();
-
 	// /* configure LEDs */
 	led_init();
 	up_mdelay(2);
 
 	esp32s3_spiinitialize();
+
+	px4_arch_configgpio(GPIO_VBUS);
 }
 
 /****************************************************************************
@@ -244,29 +249,22 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 #endif
 
 #ifdef CONFIG_ESP32S3_SPI2
-	spi2 = esp32s3_spibus_initialize(2);
+	spi2 = px4_spibus_initialize(2);
 
 	if (!spi2) {
 		syslog(LOG_ERR, "[boot] FAILED to initialize SPI port 2\n");
-		led_on(LED_GREEN);
+		// led_on(LED_GREEN);
 	}
 
-	// Default SPI2 to 10MHz
-	SPI_LOCK(spi2, true);
 	SPI_SETFREQUENCY(spi2, 10000000);
-	SPI_SETBITS(spi2, 8);
-	SPI_SETMODE(spi2, SPIDEV_MODE3);
-	SPI_LOCK(spi2, false);
-	up_udelay(20);
-
 #endif
 
 #ifdef CONFIG_ESP32S3_SPI3
-	spi3 = esp32s3_spibus_initialize(3);
+	spi3 = px4_spibus_initialize(3);
 
 	if (!spi3) {
 		syslog(LOG_ERR, "[boot] FAILED to initialize SPI port 3\n");
-		led_on(LED_GREEN);
+		// led_on(LED_GREEN);
 	}
 
 	/* Now bind the SPI interface to the MMCSD driver */
@@ -287,22 +285,28 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 
 #endif
 
-	led_on(LED_GREEN);
-	up_mdelay(100);
-	led_off(LED_GREEN);
-	up_mdelay(100);
-	led_on(LED_GREEN);
-	up_mdelay(100);
-	led_off(LED_GREEN);
+#ifdef CONFIG_ESPRESSIF_WIFI
+	ret = board_wlan_init();
 
+	if (ret < 0) {
+		syslog(LOG_ERR, "ERROR: Failed to initialize wlan subsystem=%d\n",
+		       ret);
+	}
 
+#endif
+
+	led_on(LED_GREEN);
+	up_mdelay(500);
+	led_off(LED_GREEN);
+	up_mdelay(500);
+	led_on(LED_GREEN);
+	up_mdelay(500);
+	led_off(LED_GREEN);
 
 	/* Configure the HW based on the manifest */
 	px4_platform_configure();
 
 	up_mdelay(1000);
-
-	// board_wlan_init();
 
 	return OK;
 }

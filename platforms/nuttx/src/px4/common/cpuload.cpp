@@ -238,5 +238,36 @@ void sched_note_syscall_enter(int nr);
 
 #endif
 
+#ifdef CONFIG_SMP
+void sched_note_cpu_start(FAR struct tcb_s *tcb, int cpu)
+{
+	// do nothing
+}
+
+void sched_note_cpu_started(FAR struct tcb_s *tcb)
+{
+	// do nothing
+}
+
+void sched_note_cpu_pause(FAR struct tcb_s *tcb, int cpu)
+{
+	// do nothing
+}
+
+void sched_note_cpu_paused(FAR struct tcb_s *tcb)
+{
+	// do nothing
+}
+void sched_note_cpu_resume(FAR struct tcb_s *tcb, int cpu)
+{
+	// do nothing
+}
+
+void sched_note_cpu_resumed(FAR struct tcb_s *tcb)
+{
+	// do nothing
+}
+#endif
+
 __END_DECLS
 #endif // PX4_NUTTX && CONFIG_SCHED_INSTRUMENTATION

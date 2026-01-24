@@ -35,17 +35,18 @@
 #include <px4_platform_common/micro_hal.h>
 #include <px4_platform_common/log.h>
 
-#include <px4_arch/dshot.h>
 #include <px4_arch/io_timer.h>
 
 #include <drivers/drv_dshot.h>
 
-#include <hardware/esp32s3_gpio_sigmap.h>
-#include "xtensa.h"
 #include <hardware/esp32s3_system.h>
 
 #if DIRECT_PWM_OUTPUT_CHANNELS > 4
-#error "DShot channels cannot be greater than 4."
+#error "DShot for esp32s3 only has 4 channels."
+#endif
+
+#if defined(CONFIG_ESP_RMT)
+# error "Can't enable esp rmt and dshot at same time."
 #endif
 
 // DShot protocol definitions
@@ -55,107 +56,68 @@
 #define NIBBLES_SIZE                4u
 #define DSHOT_NUMBER_OF_NIBBLES     3u
 
-#define BOARD_DSHOT_RESOLUTION_HZ 40000000 // 40MHz
-
-static rmt_block_mem_t *RMTMEM = (rmt_block_mem_t *)RMTMEM_BASE;
-
 static uint32_t _dshot_frequency = 0;
+static int _dshot_channels_mask = 0;
 
-static rmt_symbol_word_t bit0 = {
+static rmt_symbol_word_t _bit0 = {
 	.duration0 = 0,
 	.level0 = 1,
 	.duration1 = 0,
 	.level1 = 0
 };
-static rmt_symbol_word_t bit1 = {
+static rmt_symbol_word_t _bit1 = {
 	.duration0 = 0,
 	.level0 = 1,
 	.duration1 = 0,
 	.level1 = 0
 };
-
-void stop_rmt_transmission(unsigned channel)
-{
-	modifyreg32(RMT_CHxCONF0_REG(channel), 0, RMT_TX_STOP | RMT_CONF_UPDATE);
-}
-
-void start_rmt_transmission(unsigned channel)
-{
-	modifyreg32(RMT_CHxCONF0_REG(channel), 0, RMT_TX_START);
-}
-
-// static int rmt_isr(int irq, void *context, void *arg)
-// {
-// 	for (unsigned channel = 0; channel < DIRECT_PWM_OUTPUT_CHANNELS; ++channel) {
-// 		if (getreg32(RMT_INT_ST_REG) & RMT_TX_LOOP_INT_CH(channel)) {
-// 			// TODO
-// 			putreg32(RMT_TX_LOOP_INT_CH(channel), RMT_INT_CLR_REG);
-// 		}
-// 	}
-
-// 	return 0;
-// }
+static rmt_symbol_word_t _delay_and_stop = {
+	.duration0 = 0,
+	.level0 = 0,
+	.duration1 = 0,
+	.level1 = 0
+};
 
 int up_dshot_init(uint32_t channel_mask, unsigned dshot_pwm_freq, bool enable_bidirectional_dshot)
 {
 	_dshot_frequency = dshot_pwm_freq;
+	_dshot_channels_mask = channel_mask;
+
 	// different dshot protocol have its own timing requirements,
-	float period_ticks = (float)BOARD_DSHOT_RESOLUTION_HZ / dshot_pwm_freq;
+	float period_ticks = (float)DSHOT_RESOLUTION_FREQ_HZ / (float)dshot_pwm_freq;
 	// 1 and 0 is represented by a 74.850% and 37.425% duty cycle respectively
-	unsigned int t1h_ticks = (unsigned int)(period_ticks * 0.7485f);
+	unsigned int t1h_ticks = (unsigned int)(period_ticks * 0.7485f + 0.5f); // round up
 	unsigned int t1l_ticks = (unsigned int)(period_ticks - t1h_ticks);
-	unsigned int t0h_ticks = (unsigned int)(period_ticks * 0.37425f);
+	unsigned int t0h_ticks = (unsigned int)(period_ticks * 0.37425f + 0.5f); // round up
 	unsigned int t0l_ticks = (unsigned int)(period_ticks - t0h_ticks);
+	unsigned int delay_ticks = (unsigned int)(period_ticks * 3);
 
-	bit0.duration0 = t0h_ticks;
-	bit0.duration1 = t0l_ticks;
-	bit1.duration0 = t1h_ticks;
-	bit1.duration1 = t1l_ticks;
+	int ret = 0;
 
-	// set RMT peripheral clock
-	putreg32((RMT_CLK_APB << RMT_SCLK_SEL_S)
-		 | (SOC_RMT_PRESCALE << RMT_SCLK_DIV_NUM_S)
-		 | (1 << RMT_SCLK_DIV_B_S)
-		 | RMT_SCLK_ACTIVE,
-		 RMT_SYS_CONF_REG);
-	modifyreg32(SYSTEM_PERIP_CLK_EN0_REG, 0, SYSTEM_RMT_CLK_EN);
-	modifyreg32(SYSTEM_PERIP_RST_EN0_REG, SYSTEM_RMT_RST, 0);
+	_bit0.duration0 = t0h_ticks;
+	_bit0.duration1 = t0l_ticks;
+	_bit1.duration0 = t1h_ticks;
+	_bit1.duration1 = t1l_ticks;
+	_delay_and_stop.duration0 = delay_ticks;
 
 	// setup channels
-	for (unsigned channel = 0; channel < DIRECT_PWM_OUTPUT_CHANNELS; ++channel) {
+	for (unsigned channel = 0; channel < MAX_TIMER_IO_CHANNELS; ++channel) {
 		if (channel_mask & (1 << channel)) {
-			stop_rmt_transmission(channel);
+			ret = io_timer_channel_init(channel, IOTimerChanMode_Dshot, NULL, NULL);
 
-			// reset channel
-			modifyreg32(RMT_REF_CNT_RST_REG, 0, (1 << channel));
-			modifyreg32(RMT_CHxCONF0_REG(channel), 0, RMT_MEM_RD_RST | RMT_APB_MEM_RST);
+			if (ret != OK) {
+				continue;
+			}
 
-			// setup gpio
-			px4_arch_configgpio(io_timer_channel_get_gpio_output(channel));
-			esp32s3_gpio_matrix_out(esp32s3_gpio(timer_io_channels[channel].gpio_out), RMT_SIG_OUT0_IDX + channel, false, false);
+			dshot_motor_data_set(channel, 0, false);
+			// delay and stop symbol
+			rmt_set_symbol(channel, DSHOT_FRAME_SIZE, _delay_and_stop);
 
-			// setup channel
-			modifyreg32(RMT_CHxCONF0_REG(channel), RMT_IDLE_OUT_LV | RMT_TX_CONTI_MODE | RMT_MEM_TX_WRAP_EN, RMT_IDLE_OUT_EN
-				    | (SOC_RMT_CHANNEL_PRESCALE << RMT_DIV_CNT_S)
-				    | (1 << RMT_MEM_SIZE_S)
-				    | RMT_CONF_UPDATE);
-
-			// putreg32((1 << RMT_TX_LOOP_NUM_S) | RMT_TX_LOOP_CNT_EN, RMT_TX_LIM_REG_CH(channel));
-
-			// enable irq
-			// putreg32(RMT_TX_LOOP_INT_CH(channel), RMT_INT_ENA_REG);
+			rmt_start(channel);
 		}
 	}
 
-	// int ret = irq_attach(ESP32S3_IRQ_RMT, rmt_isr, NULL);
-
-	// if (ret == OK) {
-	// 	up_enable_irq(ESP32S3_IRQ_RMT);
-	// }
-
-	// return ret;
-
-	return 0;
+	return _dshot_channels_mask;
 }
 
 
@@ -188,41 +150,24 @@ void dshot_motor_data_set(unsigned channel, uint16_t data, bool telemetry)
 	for (; i < DSHOT_FRAME_SIZE; ++i) {
 		if (packet & (1 << (DSHOT_FRAME_SIZE - i - 1))) {
 
-			RMTMEM->channels[channel].symbols[i] = bit1;
+			rmt_set_symbol(channel, i, _bit1);
 
 		} else {
 
-			RMTMEM->channels[channel].symbols[i] = bit0;
+			rmt_set_symbol(channel, i, _bit0);
 		}
 	}
-
-	// add stop symbol
-	rmt_symbol_word_t stop_symbol = {
-		.duration0 = 0,
-		.level0 = 0,
-		.duration1 = 0,
-		.level1 = 0
-	};
-	RMTMEM->channels[channel].symbols[i] = stop_symbol;
 }
 
 // Kicks off a DMA transmit for each configured timer and the associated channels
 void up_dshot_trigger()
 {
-	for (unsigned channel = 0; channel < DIRECT_PWM_OUTPUT_CHANNELS; ++channel) {
-		start_rmt_transmission(channel);
-	}
+	// io_timer_trigger(_dshot_channels_mask);
 }
 
 int up_dshot_arm(bool armed)
 {
-	if (armed) { return 0; }
-
-	for (unsigned channel = 0; channel < DIRECT_PWM_OUTPUT_CHANNELS; ++channel) {
-		stop_rmt_transmission(channel);
-	}
-
-	return 0;
+	return io_timer_set_enable(armed, IOTimerChanMode_Dshot, _dshot_channels_mask);
 }
 
 int up_bdshot_num_erpm_ready(void)

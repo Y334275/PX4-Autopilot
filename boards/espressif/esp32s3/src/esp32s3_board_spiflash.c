@@ -42,8 +42,8 @@
 #include <nuttx/drivers/drivers.h>
 #endif
 
-#include "esp32s3_spiflash.h"
-#include "esp32s3_spiflash_mtd.h"
+#include "espressif/esp_spiflash.h"
+#include "espressif/esp_spiflash_mtd.h"
 
 // #define CONFIG_ESP32_SPIFLASH_SPIFFS
 
@@ -421,9 +421,8 @@ static int init_caldata_partition(void)
 	int ret = OK;
 	struct mtd_dev_s *mtd;
 
-	mtd = esp32s3_spiflash_alloc_mtdpart(CONFIG_ESP32S3_CALDATA_MTD_OFFSET,
-					     CONFIG_ESP32S3_CALDATA_MTD_SIZE,
-					     STORAGE_ENCRYPT);
+	mtd = esp_spiflash_alloc_mtdpart(CONFIG_ESP32S3_CALDATA_MTD_OFFSET,
+					 CONFIG_ESP32S3_CALDATA_MTD_SIZE);
 
 	if (!mtd) {
 		ferr("ERROR: Failed to alloc CALDATA MTD partition of SPI Flash\n");
@@ -462,7 +461,7 @@ int board_spiflash_init(void)
 {
 	int ret = OK;
 
-	ret = esp32s3_spiflash_init();
+	ret = esp_spiflash_init();
 
 	if (ret < 0) {
 		return ret;

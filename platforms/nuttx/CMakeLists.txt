@@ -340,66 +340,44 @@ if(CONFIG_ARCH_CHIP_ESP32)
 			DEPENDS px4
 		)
 elseif(CONFIG_ARCH_CHIP_ESP32S3)
-	# clone esp-hal-3dparty
-	# set(ESP_HAL_3RDPARTY_REPO "https://github.com/espressif/esp-hal-3rdparty.git")
-	# set(ESP_HAL_3RDPARTY_BRANCH "origin/release/v5.1.c")
-	# set(PX4_ESP_3RDPARTY_DIR ${PX4_SOURCE_DIR}/platforms/nuttx/src/px4/espressif/esp-hal-3rdparty)
-
-	# if(NOT EXISTS ${PX4_ESP_3RDPARTY_DIR})
-	# 	message(STATUS "Cloning repository esp-hal-3rdparty...")
-	# 	execute_process(
-	# 		COMMAND git clone ${ESP_HAL_3RDPARTY_REPO} ${PX4_ESP_3RDPARTY_DIR}
-	# 		RESULT_VARIABLE ESP_HAL_3RDPARTY_CLONE_RESULT
-	# 		ERROR_VARIABLE ESP_HAL_3RDPARTY_CLONE_ERROR
-        # 		OUTPUT_QUIET
-	# 		)
-	# 	if (NOT ESP_HAL_3RDPARTY_CLONE_RESULT EQUAL 0)
-	# 		message(FATAL_ERROR "Clone failed: ${ESP_HAL_3RDPARTY_CLONE_ERROR}")
-	# 	endif()
-	# endif()
-	# execute_process(
-	# 	COMMAND git checkout ${ESP_HAL_3RDPARTY_BRANCH}
-	# 	WORKING_DIRECTORY ${PX4_ESP_3RDPARTY_DIR}
-	# 	RESULT_VARIABLE ESP_HAL_3RDPARTY_CLONE_RESULT
-	# 	ERROR_VARIABLE ESP_HAL_3RDPARTY_CLONE_ERROR
-	# 	OUTPUT_QUIET
-	# 	)
-	# if (NOT ESP_HAL_3RDPARTY_CLONE_RESULT EQUAL 0)
-	# 	message(FATAL_ERROR "Checkout failed: ${ESP_HAL_3RDPARTY_CLONE_ERROR}")
-	# endif()
-
 	set(PX4_STARTUP_DIR ${PX4_SOURCE_DIR}/platforms/nuttx/NuttX/nuttx/arch/xtensa/src)
+	set(ESP_HAL_ROM_DIR ${PX4_STARTUP_DIR}/chip/esp-hal-3rdparty/components/esp_rom/esp32s3/ld)
+	set(ESP_HAL_SOC_DIR ${PX4_STARTUP_DIR}/chip/esp-hal-3rdparty/components/soc/esp32s3/ld)
 
-	set(NUTTX_STARTUP_OBJS
-	${PX4_STARTUP_DIR}/xtensa_vectors.o
-	${PX4_STARTUP_DIR}/xtensa_window_vector.o
-	${PX4_STARTUP_DIR}/xtensa_windowspill.o
-	${PX4_STARTUP_DIR}/xtensa_int_handlers.o
-	${PX4_STARTUP_DIR}/xtensa_user_handler.o
-	${PX4_STARTUP_DIR}/xtensa_initialize.o
-	${PX4_STARTUP_DIR}/xtensa_initialstate.o
-	${PX4_STARTUP_DIR}/xtensa_udelay.o
-	${PX4_STARTUP_DIR}/esp32s3_wdt.o
-	${PX4_STARTUP_DIR}/esp32s3_start.o
-	)
+	# wireless
+	set(ESP_WIFI_LIB ${PX4_STARTUP_DIR}/chip/esp-hal-3rdparty/components/esp_wifi/lib/esp32s3)
+	set(ESP_PHY_LIB ${PX4_STARTUP_DIR}/chip/esp-hal-3rdparty/components/esp_phy/lib/esp32s3)
 
-	# set(NUTTX_NETWORK_LIB
-	# libbtdm_app.a
-	# libcoexist.a
-	# libcore.a
-	# libespnow.a
-	# libnet80211.a
-	# libphy.a
-	# libpp.a
-	# librtc.a
-	# libsmartconfig.a
-	# libwapi.a
-	# libwpa_supplicant.a
-	# )
-	execute_process(COMMAND touch ${NUTTX_STARTUP_OBJS}
-	WORKING_DIRECTORY ${PX4_SOURCE_DIR})
+	set(ESP_WIFI_OBJS
+		libcore.a
+		libespnow.a
+		# libmesh.a
+		libnet80211.a
+		libpp.a
+		# libsmartconfig.a
+		# libwapi.a
+		)
+	set(ESP_PHY_OBJS
+		libphy.a
+		# librftest.a
+		# libbttestmode.a
+		# libbtbb.a
+		# librfate.a
+		)
+	# startup
+	set(STARTUP_OBJS
+		${PX4_STARTUP_DIR}/xtensa_vectors.o
+		${PX4_STARTUP_DIR}/xtensa_window_vector.o
+		${PX4_STARTUP_DIR}/xtensa_windowspill.o
+		${PX4_STARTUP_DIR}/xtensa_int_handlers.o
+		${PX4_STARTUP_DIR}/xtensa_user_handler.o
+		${PX4_STARTUP_DIR}/esp32s3_start.o
+		)
+	execute_process(COMMAND touch ${STARTUP_OBJS}
+		WORKING_DIRECTORY ${PX4_SOURCE_DIR}
+		)
 	set_source_files_properties(
-		${NUTTX_STARTUP_OBJS}
+		${STARTUP_OBJS}
 		PROPERTIES
 		EXTERNAL_OBJECT true
 		GENERATED true)
@@ -411,9 +389,11 @@ elseif(CONFIG_ARCH_CHIP_ESP32S3)
 			drivers_board
 			arch_hrt
 			arch_board_reset
-			# -L${WIRELESS_LIB}
+			-L${ESP_WIFI_LIB}
+			-L${ESP_PHY_LIB}
 			-Wl,--start-group
-			# ${NUTTX_NETWORK_LIB}
+				${ESP_WIFI_OBJS}
+				${ESP_PHY_OBJS}
 			-Wl,--end-group
 	)
 
@@ -421,7 +401,7 @@ elseif(CONFIG_ARCH_CHIP_ESP32S3)
 	target_link_libraries(nuttx_drivers INTERFACE nuttx_c nuttx_fs)
 	target_link_libraries(nuttx_xx INTERFACE nuttx_c)
 	target_link_libraries(nuttx_fs INTERFACE nuttx_c)
-	# target_link_libraries(nuttx_net INTERFACE nuttx_mm)
+	target_link_libraries(nuttx_net INTERFACE nuttx_mm)
 
 	target_link_libraries(px4 PRIVATE
 		-nostartfiles
@@ -431,27 +411,35 @@ elseif(CONFIG_ARCH_CHIP_ESP32S3)
 		-fno-exceptions
 		-fno-rtti
 		-Wl,--cref
-		# -L${WIRELESS_LIB}
+		-L${ESP_WIFI_LIB}
+		-L${ESP_PHY_LIB}
 		-Wl,-T${NUTTX_CONFIG_DIR_CYG}/scripts/${SCRIPT_PREFIX}esp32s3.layout.ld
 		-T${NUTTX_CONFIG_DIR_CYG}/scripts/${SCRIPT_PREFIX}esp32s3.section.ld
 		-T${NUTTX_CONFIG_DIR_CYG}/scripts/${SCRIPT_PREFIX}esp32s3.rom.aliases.ld
-		-T${NUTTX_CONFIG_DIR_CYG}/scripts/${SCRIPT_PREFIX}esp32s3.rom.api.ld
-		-T${NUTTX_CONFIG_DIR_CYG}/scripts/${SCRIPT_PREFIX}esp32s3.rom.ld
-		-T${NUTTX_CONFIG_DIR_CYG}/scripts/${SCRIPT_PREFIX}esp32s3.rom.libgcc.ld
-		-T${NUTTX_CONFIG_DIR_CYG}/scripts/${SCRIPT_PREFIX}esp32s3.rom.newlib-time.ld
-		-T${NUTTX_CONFIG_DIR_CYG}/scripts/${SCRIPT_PREFIX}esp32s3.rom.newlib.ld
-		-T${NUTTX_CONFIG_DIR_CYG}/scripts/${SCRIPT_PREFIX}esp32s3.rom.version.ld
+		-T${ESP_HAL_SOC_DIR}/esp32s3.peripherals.ld
+		-T${ESP_HAL_ROM_DIR}/esp32s3.rom.api.ld
+		-T${ESP_HAL_ROM_DIR}/esp32s3.rom.ld
+		-T${ESP_HAL_ROM_DIR}/esp32s3.rom.libc.ld
+		-T${ESP_HAL_ROM_DIR}/esp32s3.rom.libgcc.ld
+		-T${ESP_HAL_ROM_DIR}/esp32s3.rom.newlib-time.ld
+		-T${ESP_HAL_ROM_DIR}/esp32s3.rom.newlib.ld
+		-T${ESP_HAL_ROM_DIR}/esp32s3.rom.version.ld
+		-T${ESP_HAL_ROM_DIR}/esp32s3.rom.wdt.ld
 		-Wl,-Map=${PX4_CONFIG}.map
 		-Wl,--gc-sections
-
+		-Wl,--undefined=net80211_printf
+		-Wl,--undefined=regdomain_table
+		-Wl,--undefined=regulatory_data
 		-Wl,--start-group
 			${nuttx_libs}
-			${NUTTX_STARTUP_OBJS}
-			# ${NUTTX_NETWORK_LIB}
+			${STARTUP_OBJS}
+			${ESP_WIFI_OBJS}
+			${ESP_PHY_OBJS}
 		-Wl,--end-group
 
 		m
 		gcc
+		stdc++
 		)
 
 		if(NOT USE_LD_GOLD)
@@ -464,7 +452,6 @@ elseif(CONFIG_ARCH_CHIP_ESP32S3)
 			target_link_libraries(px4 PRIVATE romfs)
 		endif()
 		# flash size
-		set(FLASH_SIZE 4MB)
 		if(CONFIG_ESP32S3_FLASH_4M)
 			set(FLASH_SIZE 4MB)
 		elseif(CONFIG_ESP32S3_FLASH_8M)
@@ -473,7 +460,6 @@ elseif(CONFIG_ARCH_CHIP_ESP32S3)
 			set(FLASH_SIZE 16MB)
 		endif() # flash size
 		# flash mode
-		set(FLASH_MODE dio)
 		if(CONFIG_ESP32S3_FLASH_MODE_DIO)
 			set(FLASH_MODE dio)
 		elseif(CONFIG_ESP32S3_FLASH_MODE_DOUT)
@@ -484,18 +470,10 @@ elseif(CONFIG_ARCH_CHIP_ESP32S3)
 			set(FLASH_MODE qout)
 		endif() # flash mode
 		# flash frequency
-		set(FLASH_FREQ 40m)
-		if(CONFIG_ESP32S3_FLASH_FREQ_120M)
-			set(FLASH_FREQ 120m)
-		elseif(CONFIG_ESP32S3_FLASH_FREQ_80M)
-			set(FLASH_FREQ 80m)
-		elseif(CONFIG_ESP32S3_FLASH_FREQ_40M)
-			set(FLASH_FREQ 40m)
-		elseif(CONFIG_ESP32S3_FLASH_FREQ_20M)
-			set(FLASH_FREQ 20m)
-		endif() # flash frequency
+		set(FLASH_FREQ ${CONFIG_ESPRESSIF_FLASH_FREQ})
+		message(STATUS "esp32s3 flash size: ${FLASH_SIZE}, flash mode: ${FLASH_MODE}, flash freq: ${FLASH_FREQ}")
 		add_custom_command(OUTPUT ${PX4_BINARY_OUTPUT}
-			COMMAND esptool.py --chip esp32s3 elf2image -o ${PX4_BINARY_OUTPUT} -fs ${FLASH_SIZE} -fm ${FLASH_MODE} -ff ${FLASH_FREQ} ${PX4_BINARY_DIR_REL}/${FW_NAME}
+			COMMAND esptool.py --chip esp32s3 elf2image -o ${PX4_BINARY_OUTPUT} --ram-only-header -fs ${FLASH_SIZE} -fm ${FLASH_MODE} -ff ${FLASH_FREQ} ${PX4_BINARY_DIR_REL}/${FW_NAME}
 			COMMAND du ${PX4_BINARY_OUTPUT} -h
 			DEPENDS px4
 		)

@@ -39,65 +39,27 @@
 #include <px4_platform_common/px4_config.h>
 #include <px4_platform_common/defines.h>
 
+#include <hal/efuse_hal.h>
 
-/* Define any issues with the Silicon as lines separated by \n
- * omitting the last \n
- */
-#define ESP32_ERRATA "No unique CPU ID, using MAC address."
-#define DR_REG_EFUSE_BASE 0x3ff5a000
-#define DR_REG_SYSCON_BASE 0x60026000
-#define EFUSE_BLK0_RDATA3_REG (DR_REG_EFUSE_BASE + 0x00c)
-#define EFUSE_BLK0_RDATA5_REG (DR_REG_EFUSE_BASE + 0x014)
-#define SYSCON_DATE_REG       (DR_REG_SYSCON_BASE + 0x3FC)
+#define to_char(ver) ((ver) < 10 ? ((ver) + 48) : ((ver) > 15 ? '?' : ((ver) + 51)))
 
-#define REG_READ(_r) (*(volatile uint32_t *)(_r))
-
+static char chip_str[12] = "ESP32S3 v";
 
 int board_mcu_version(char *rev, const char **revstr, const char **errata)
 {
-	/*
-	 comes from esp-idf in efuse_hal_get_major_chip_version
-	 and efuse_hal_get_minor_chip_version
-	*/
-	uint8_t eco_bit0 = (REG_READ(EFUSE_BLK0_RDATA3_REG) >> 15) & 0x1;
-	uint8_t eco_bit1 = (REG_READ(EFUSE_BLK0_RDATA5_REG) >> 20) & 0x1;
-	uint8_t eco_bit2 = (REG_READ(SYSCON_DATE_REG) & 0x80000000) >> 31;
-	uint32_t combine_value = (eco_bit2 << 2) | (eco_bit1 << 1) | eco_bit0;
-	uint8_t minor_revision = (REG_READ(EFUSE_BLK0_RDATA5_REG) >> 24) & 0x3;
+	irqstate_t flags = px4_enter_critical_section();
 
-	int revid;
+	uint32_t major = efuse_hal_get_major_chip_version();
+	// minor has 4 bits in esp-idf v5.1
+	uint32_t minor = efuse_hal_get_minor_chip_version();
 
-	switch (combine_value) {
-	case 0:
-		*revstr = "ESP32S3 v0";
-		*rev = minor_revision + 48;
-		revid = minor_revision;
-		break;
+	chip_str[9] = to_char(major);
+	chip_str[10] = '\0';
 
-	case 1:
-		*revstr = "ESP32S3 v1";
-		*rev = minor_revision + 48;
-		revid = minor_revision;
-		break;
+	*revstr = chip_str;
+	*rev = to_char(minor);
 
-	case 3:
-		*revstr = "ESP32S3 v2";
-		*rev = minor_revision + 48;
-		revid = minor_revision;
-		break;
+	px4_leave_critical_section(flags);
 
-	case 7:
-		*revstr = "ESP32S3 v3";
-		*rev = minor_revision + 48;
-		revid = minor_revision;
-		break;
-
-	default:
-		*revstr = "ESP32S3 v?";
-		*rev = '?';
-		revid = 0;
-		break;
-	}
-
-	return revid;
+	return *rev;
 }
